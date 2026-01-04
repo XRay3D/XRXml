@@ -316,12 +316,13 @@ inline constexpr bool Document::parse(string_view buf) {
         case '!': // Special nodes
                   // Comments
             if(buf.starts_with("<!--"sv)) {
-                while(!lex.ends_with("-->"sv))
-                    if(i = buf.find_first_of('>'); i == ""sv.npos) {
+                while(!lex.ends_with("-->"sv)) {
+                    if(i = buf.find_first_of('>', i); i > buf.size()) {
                         println(stderr, "Mismatched end of comment at {}", buf.data() - this->buf.data());
                         return false;
                     } else lex = buf.substr(0, ++i);
-                (new Element{currNode})->setText(lex);
+                }
+                // (new Element{currNode})->setText(lex);
                 buf = buf.substr(i);
                 continue;
             }
