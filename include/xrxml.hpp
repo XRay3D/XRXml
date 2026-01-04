@@ -136,8 +136,16 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
 
     ~Element() = default;
     Elements children(string_view tag);
-    string_view attrVal(string_view key);
-    Attribute* attr(string_view key);
+
+    string_view attrVal(string_view key) const {
+        auto it = r::find(attributes, key, &Attribute::key);
+        return (it != attributes.end()) ? it.base()->value() : ""sv;
+    }
+
+    const Attribute* attr(string_view key) const {
+        auto it = r::find(attributes, key, &Attribute::key);
+        return (it != attributes.end()) ? it.base() : nullptr;
+    }
 
     Element* firstChild(string_view tag) {
         auto it = r::find(*this, tag, &Data::key);
@@ -190,19 +198,6 @@ inline Elements Element::children(string_view tag) {
     return list;
 }
 
-inline string_view Element::attrVal(string_view key) {
-    for(int i = 0; i < attributes.size(); i++) {
-        Attribute attr = attributes /*.data*/[i];
-        if(attr.key == key)
-            return attr.value();
-    }
-    return {};
-}
-
-inline Attribute* Element::attr(string_view key) {
-    auto it = r::find(attributes, key, &Attribute::key);
-    return (it != attributes.end()) ? it.base() : nullptr;
-}
 // =============== Document ===============
 inline bool Document::load(string_view path) {
     std::unique_ptr<FILE, decltype([](FILE* fp) { if(fp) fclose(fp); })>
