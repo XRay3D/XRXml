@@ -144,6 +144,11 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
         return it != end() ? it->get() : nullptr;
     }
 
+    const Element* firstChild(string_view tag) const {
+        auto it = r::find(*this, tag, &Data::key);
+        return it != end() ? it->get() : nullptr;
+    }
+
     string_view tag() const noexcept { return key; }
     string_view text() const noexcept { return value(); }
 
