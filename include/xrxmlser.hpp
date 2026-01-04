@@ -307,73 +307,73 @@ private:
 
 #else
 
-    NodeTag* node;
-    std::stack<NodeTag*> stack;
+    Element* node;
+    std::stack<Element*> stack;
 
     // ======================================================================
 
     template <typename T>
-    static void save(const T& data, NodeTag* node) { save<^^T>(data, node); }
+    static void save(const T& data, Element* node) { save<^^T>(data, node); }
 
-    static void save(Null, NodeTag*) { } // NOTE do nothing
+    static void save(Null, Element*) { } // NOTE do nothing
 
     template <meta::info INFO, typename... Ts>
-    static void save(const std::variant<Ts...>& data, NodeTag* node) {
+    static void save(const std::variant<Ts...>& data, Element* node) {
         data.visit([node](auto&& arg) { save(arg, node); });
     }
 
     template <meta::info INFO, typename T>
-    static void save(const T& data, NodeTag* node) {
+    static void save(const T& data, Element* node) {
         static constexpr string_view NAME_OF{nameOf(INFO)};
 #if 0
         // clang-format off
         Overload{
-            [](const std::string& data, NodeTag* node) requires IsAttr<INFO> {
+            [](const std::string& data, Element* node) requires IsAttr<INFO> {
                 if(CanSkip<INFO> && data.empty()) return;
                 node->attributes.emplace_back(NAME_OF, data);
             },
-            []<IsArithmetic A>(const A& data, NodeTag* node) requires IsAttr<INFO> {
+            []<IsArithmetic A>(const A& data, Element* node) requires IsAttr<INFO> {
                 if(CanSkip<INFO> && data == A{}) return;
                 std::array<char, 32> buf{};
                 node->attributes.emplace_back(NAME_OF,
                     std::string{buf.begin(),
                         std::to_chars(buf.begin(), buf.end(), data).ptr});
             },
-            []<IsEnum E>(const E& data, NodeTag* node) requires IsAttr<INFO> {
+            []<IsEnum E>(const E& data, Element* node) requires IsAttr<INFO> {
                 if(CanSkip<INFO> && data == E{}) return;
                 node->attributes.emplace_back(NAME_OF, toString(data));
             },
 
-            [](const std::string& data, NodeTag* node) {
+            [](const std::string& data, Element* node) {
                 if(CanSkip<INFO> && data.empty()) return;
-                new NodeTag{node, NAME_OF, data};
+                new Element{node, NAME_OF, data};
             },
-            []<IsArithmetic A>(const A& data, NodeTag* node) {
+            []<IsArithmetic A>(const A& data, Element* node) {
                 std::array<char, 32> buf{};
-                new NodeTag{
+                new Element{
                     node, NAME_OF,
                     std::string{buf.begin(), std::to_chars(buf.begin(), buf.end(), data).ptr}
                 };
             },
-            []<IsEnum E>(const E& data, NodeTag* node) {
+            []<IsEnum E>(const E& data, Element* node) {
                 if(CanSkip<INFO> && data == E{}) return;
-                new NodeTag{node, NAME_OF, toString(data)};
+                new Element{node, NAME_OF, toString(data)};
             },
-            []<IsRange R>(const R& data, NodeTag* node) requires IsArr<INFO> {
+            []<IsRange R>(const R& data, Element* node) requires IsArr<INFO> {
                 if(CanSkip<INFO> && data.size() == 0u) return;
-                node = new NodeTag{node, NAME_OF};
+                node = new Element{node, NAME_OF};
                 for(auto&& var: data) save(var, node);
             },
-            []<IsRange R>(const R& data, NodeTag* node) requires (!IsArr<INFO>) {
+            []<IsRange R>(const R& data, Element* node) requires (!IsArr<INFO>) {
                 for(auto&& var: data) save(var, node);
             },
-            []<IsClass C>(const C& data, NodeTag* node) {
-                node = new NodeTag{node, NAME_OF};
+            []<IsClass C>(const C& data, Element* node) {
+                node = new Element{node, NAME_OF};
                 static_assert(members<C>().size(), display_string_of(^^C));
                 template for(constexpr meta::info MEMBER: members<C>())
                     save<MEMBER>(data.[:MEMBER:], node);
             },
-            [](const T& data, NodeTag* node) {
+            [](const T& data, Element* node) {
                 logRed("data {} {}", NAME_OF, display_string_of(^^T));
             },
         }/*(data, node)*/;
@@ -383,26 +383,26 @@ private:
         if constexpr(IsAttr<INFO>) {
 
             Overload save{
-                [](const std::string& data, NodeTag* node) {
+                [](const std::string& data, Element* node) {
                     if(CanSkip<INFO> && data.empty()) return;
                     node->attributes.emplace_back(NAME_OF, data);
                 },
-                []<IsArithmetic A>(const A& data, NodeTag* node) {
+                []<IsArithmetic A>(const A& data, Element* node) {
                     if(CanSkip<INFO> && data == A{}) return;
                     std::array<char, 32> buf{};
                     node->attributes.emplace_back(NAME_OF,
                         std::string{buf.begin(),
                             std::to_chars(buf.begin(), buf.end(), data).ptr});
                 },
-                []<IsEnum E>(const E& data, NodeTag* node) {
+                []<IsEnum E>(const E& data, Element* node) {
                     if(CanSkip<INFO> && data == T{}) return;
                     node->attributes.emplace_back(NAME_OF, toString(data));
                 },
-                []<class Any>(const Any& data, NodeTag* node) {
+                []<class Any>(const Any& data, Element* node) {
                     logRed("data {} {}", NAME_OF, display_string_of(^^Any));
                 },
             };
-            // constexpr auto save = [](const T& data, NodeTag* node) {
+            // constexpr auto save = [](const T& data, Element* node) {
             //     if constexpr(IsSame<T, std::string>) {
             //         if(CanSkip<INFO> && data == T{}) return;
             //         node->attributes.emplace_back(NAME_OF, data);
@@ -436,24 +436,24 @@ private:
             } else
                 save(data, node);
         } else if constexpr(IsSame<T, std::string>) {
-            new NodeTag{node, NAME_OF, data};
+            new Element{node, NAME_OF, data};
         } else if constexpr(IsArithmetic<T>) {
             std::array<char, 32> buf{};
-            new NodeTag{
+            new Element{
                 node, NAME_OF,
                 std::string{buf.begin(), std::to_chars(buf.begin(), buf.end(), data).ptr}
             };
         } else if constexpr(IsEnum<T>) {
-            new NodeTag{node, NAME_OF, toString(data)};
+            new Element{node, NAME_OF, toString(data)};
         } else if constexpr(IsArr<INFO>) {
             // if(NAME_OF == "Voids") logYellow("data {} {}", NAME_OF, display_string_of(^^T));
             if(CanSkip<INFO> && data.empty()) return;
-            node = new NodeTag{node, NAME_OF};
+            node = new Element{node, NAME_OF};
             for(auto&& var: data) save(var, node);
         } else if constexpr(IsRange<T>) {
             for(auto&& var: data) save(var, node);
         } else if constexpr(IsClass<T>) {
-            node = new NodeTag{node, NAME_OF};
+            node = new Element{node, NAME_OF};
             // static_assert(members<T>().size(), display_string_of(^^T));
             template for(constexpr meta::info MEMBER: members(^^T))
                 save<MEMBER>(data.[:MEMBER:], node);
@@ -469,13 +469,13 @@ private:
 
     // ======================================================================
 
-    static void load(Null, NodeTag*) { } // NOTE do nothing
+    static void load(Null, Element*) { } // NOTE do nothing
 
     template <typename T>
-    static void load(T& data, NodeTag* node) { load<^^T>(data, node); }
+    static void load(T& data, Element* node) { load<^^T>(data, node); }
 
     template <meta::info INFO, typename T>
-    static void load(T& data, NodeTag* node) {
+    static void load(T& data, Element* node) {
         static constexpr string_view NAME_OF{nameOf(INFO)};
         Data* val = IsAttr<INFO> ? node->attr(NAME_OF)
                                  : node->firstChild(NAME_OF);
@@ -494,13 +494,13 @@ private:
     }
 
     template <meta::info INFO, typename... Ts>
-    static void load(std::variant<Ts...>& data, NodeTag* node) { // for ,Node* ndall
+    static void load(std::variant<Ts...>& data, Element* node) { // for ,Node* ndall
         struct Pair {
             string_view name;
-            void (*func)(std::variant<Ts...>& data, NodeTag* node);
+            void (*func)(std::variant<Ts...>& data, Element* node);
         };
         static constexpr std::array NAMES{
-            Pair{nameOf(^^Ts), +[](std::variant<Ts...>& data, NodeTag* node) {
+            Pair{nameOf(^^Ts), +[](std::variant<Ts...>& data, Element* node) {
                      load<^^Ts>(data.template emplace<Ts>(), node);
                  }}
             ...
@@ -516,12 +516,12 @@ private:
     }
 
     template <meta::info INFO, typename... Ts>
-    static void load(std::vector<std::variant<Ts...>>& data, NodeTag* node) {
+    static void load(std::vector<std::variant<Ts...>>& data, Element* node) {
 
         static const std::unordered_map loaders{
             std::pair{
                       nameOf(^^Ts),
-                      +[](std::variant<Ts...>& var, NodeTag* node) {
+                      +[](std::variant<Ts...>& var, Element* node) {
                     load<^^Ts>(var.template emplace<Ts>(), node);
                 }}
             ...
@@ -549,7 +549,7 @@ private:
     }
 
     template <meta::info INFO, typename T>
-    static void load(std::optional<T>& data, NodeTag* node) {
+    static void load(std::optional<T>& data, Element* node) {
         static constexpr string_view NAME_OF{nameOf(^^T)};
 
         Data* val = IsAttr<INFO> ? node->attr(NAME_OF)
@@ -560,7 +560,7 @@ private:
 
     template <meta::info INFO, typename T>
         requires IsElem<INFO>
-    static void load(std::vector<T>& data, NodeTag* node) {
+    static void load(std::vector<T>& data, Element* node) {
         static constexpr string_view NAME_OF{nameOf(^^T)};
         auto begin = r::find(*node, NAME_OF, &Data::key);
         if(begin == node->end()) return;
@@ -576,7 +576,7 @@ private:
 
     template <meta::info INFO, typename T>
         requires IsArr<INFO>
-    static void load(T& data, NodeTag* node) {
+    static void load(T& data, Element* node) {
         static constexpr string_view NAME_OF{nameOf(INFO)};
         if(node = node->firstChild(NAME_OF); !node) return;
         if constexpr(requires { data.resize(0u); }) {
@@ -588,7 +588,7 @@ private:
 
     template <meta::info INFO, typename T>
         requires IsRoot<INFO> || ((IsClass<T> || IsElem<INFO>) && !IsRange<T>)
-    static void load(T& data, NodeTag* node) {
+    static void load(T& data, Element* node) {
         static constexpr string_view NAME_OF{nameOf(INFO)};
         if(node->tag() != NAME_OF)
             if(node = node->firstChild(NAME_OF); !node)

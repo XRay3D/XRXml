@@ -116,30 +116,30 @@ struct Data {
 using Attribute = Data;
 
 using AttributeList = std::vector<Data>;
-using NodeList = std::vector<struct NodeTag*>;
+using Elements = std::vector<struct Element*>;
 
-struct NodeTag : Data, std::vector<std::unique_ptr<NodeTag>> {
-    struct NodeTag* parent{};
+struct Element : Data, std::vector<std::unique_ptr<Element>> {
+    struct Element* parent{};
     AttributeList attributes{};
 
-    explicit NodeTag(NodeTag* parent = nullptr);
+    explicit Element(Element* parent = nullptr);
 
-    explicit NodeTag(NodeTag* parent, string_view key, string_view val = {})
+    explicit Element(Element* parent, string_view key, string_view val = {})
         : Data{key, val}, parent{parent} {
         if(parent) parent->emplace_back(this);
     }
 
-    explicit NodeTag(NodeTag* parent, string_view key, std::string val)
+    explicit Element(Element* parent, string_view key, std::string val)
         : Data{key, val}, parent{parent} {
         if(parent) parent->emplace_back(this);
     }
 
-    ~NodeTag() = default;
-    NodeList children(string_view tag);
+    ~Element() = default;
+    Elements children(string_view tag);
     string_view attrVal(string_view key);
     Attribute* attr(string_view key);
 
-    NodeTag* firstChild(string_view tag) {
+    Element* firstChild(string_view tag) {
         auto it = r::find(*this, tag, &Data::key);
         return it != end() ? it->get() : nullptr;
     }
@@ -153,7 +153,7 @@ struct NodeTag : Data, std::vector<std::unique_ptr<NodeTag>> {
 
 struct Document {
     std::string buf;
-    NodeTag root;
+    Element root;
     string_view version;
     string_view encoding;
     bool load(string_view path);
@@ -164,7 +164,7 @@ struct Document {
 // =============== Implementation ===============
 
 // =============== Node ===============
-inline void NodeTag::setTag(string_view newTag) noexcept {
+inline void Element::setTag(string_view newTag) noexcept {
     if(key.size()) return;
     if(newTag.starts_with('<'))
         newTag = newTag.substr(1);
@@ -173,19 +173,19 @@ inline void NodeTag::setTag(string_view newTag) noexcept {
     key = newTag;
 }
 
-inline NodeTag::NodeTag(NodeTag* parent)
+inline Element::Element(Element* parent)
     : parent{parent} {
     if(parent) parent->emplace_back(this);
 }
 
-inline NodeList NodeTag::children(string_view tag) {
-    NodeList list;
+inline Elements Element::children(string_view tag) {
+    Elements list;
     auto filter = [tag](auto&& child) { return child->tag() == tag; };
-    list.assign_range(*this | v::filter(filter) | v::transform(&std::unique_ptr<NodeTag>::get));
+    list.assign_range(*this | v::filter(filter) | v::transform(&std::unique_ptr<Element>::get));
     return list;
 }
 
-inline string_view NodeTag::attrVal(string_view key) {
+inline string_view Element::attrVal(string_view key) {
     for(int i = 0; i < attributes.size(); i++) {
         Attribute attr = attributes /*.data*/[i];
         if(attr.key == key)
@@ -194,7 +194,7 @@ inline string_view NodeTag::attrVal(string_view key) {
     return {};
 }
 
-inline Attribute* NodeTag::attr(string_view key) {
+inline Attribute* Element::attr(string_view key) {
     auto it = r::find(attributes, key, &Attribute::key);
     return (it != attributes.end()) ? it.base() : nullptr;
 }
@@ -223,7 +223,7 @@ inline constexpr bool Document::parse(string_view buf) {
     string_view lex;
     size_t i;
 
-    NodeTag* currNode = &root;
+    Element* currNode = &root;
     // Remove bom
     if(buf.starts_with("\xEF\xBB\xBF"sv))
         buf = buf.substr(3);
@@ -233,7 +233,7 @@ inline constexpr bool Document::parse(string_view buf) {
         INLINE
     };
 
-    static constexpr auto parseAttrs = +[](string_view& buf, NodeTag& node) -> TagType {
+    static constexpr auto parseAttrs = +[](string_view& buf, Element& node) -> TagType {
         Attribute attr;
         TagType tt;
         size_t i{};
@@ -321,20 +321,20 @@ inline constexpr bool Document::parse(string_view buf) {
                         println(stderr, "Mismatched end of comment at {}", buf.data() - this->buf.data());
                         return false;
                     } else lex = buf.substr(0, ++i);
-                (new NodeTag{currNode})->setText(lex);
+                (new Element{currNode})->setText(lex);
                 buf = buf.substr(i);
                 continue;
             }
             std::unreachable();
         case '?': { // Declaration tags
-            NodeTag desc;
+            Element desc;
             parseAttrs(buf, desc);
             version = desc.attrVal("version"sv);
             encoding = desc.attrVal("encoding"sv);
             continue;
         }
         default: // New node
-            currNode = new NodeTag{currNode};
+            currNode = new Element{currNode};
             // Start tag
             if(parseAttrs(buf, *currNode) == TagType::INLINE) {
                 currNode = currNode->parent;
@@ -363,7 +363,7 @@ inline bool Document::write(string_view path, int indent) {
     if(encoding.empty()) encoding = "UTF-8";
 
     println(file.get(), R"(<?xml version="{}" encoding="{}"?>)", version, encoding);
-    auto nodeOut = [file = file.get(), indent](this auto&& nodeOut, const NodeTag* node, int times = 0) -> void {
+    auto nodeOut = [file = file.get(), indent](this auto&& nodeOut, const Element* node, int times = 0) -> void {
         const auto indentTag = v::repeat(' ', indent * times);
         const auto indentAttr = v::repeat(' ', indent * ++times - 1);
         for(auto&& child: *node) {
