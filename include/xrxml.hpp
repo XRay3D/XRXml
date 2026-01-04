@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cassert>
 #include <memory>
-#include <meta>
 #include <print>
 #include <ranges>
 #include <vector>
@@ -409,5 +408,3 @@ inline bool Document::write(string_view path, int indent) {
 
 } // namespace XML
 // LXML_END_MODULE_EXPORT
-
-#include "lxmlser.hpp"

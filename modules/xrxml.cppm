@@ -15,10 +15,19 @@ module;
 #ifdef LXML_USE_STD_MODULE
 import std;
 #else
+#include <algorithm>
 #include <cassert>
+#include <charconv>
+#include <cstdlib>
 #include <memory>
+#if __has_include(<meta>)
+#include <meta>
+#endif
+#include <optional>
 #include <print>
 #include <ranges>
+#include <stack>
+#include <unordered_map>
 #include <vector>
 #endif
 
@@ -27,8 +36,10 @@ import std;
 export module lxml;
 
 #ifdef __clang__
-#   pragma clang diagnostic ignored "-Winclude-angled-in-module-purview"
+#pragma clang diagnostic ignored "-Winclude-angled-in-module-purview"
 #endif
 
 #include <xrxml.hpp>
-
+#if __has_include(<meta>)
+#include <xrxmlser.hpp>
+#endif
