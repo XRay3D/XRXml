@@ -139,7 +139,7 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
 
     string_view attrVal(string_view key) const {
         auto it = r::find(attributes, key, &Attribute::key);
-        return (it != attributes.end()) ? it.base()->value() : ""sv;
+        return (it != attributes.end()) ? it->value() : ""sv;
     }
 
     const Attribute* attr(string_view key) const {
@@ -162,6 +162,12 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
         return it != end() ? it->get() : nullptr;
     }
 
+    const Element* sibling(ptrdiff_t index) const {
+        if(!parent) return nullptr;
+        auto it = r::find(*parent, this, &std::unique_ptr<Element>::get) + index;
+        if(parent->begin() > it || it >= parent->end()) return nullptr;
+        return it->get();
+    }
     string_view name() const noexcept { return key; }
     string_view text() const noexcept { return value(); }
 
