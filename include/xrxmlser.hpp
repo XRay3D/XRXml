@@ -508,7 +508,7 @@ private:
 
         for(auto&& node: *node) {
             for(auto [name, load]: NAMES) {
-                if(node->tag() == name)
+                if(node->name() == name)
                     return load(data, node.get());
             }
         }
@@ -545,7 +545,7 @@ private:
         if constexpr(requires { data.resize(0u); })
             data.resize(span.size());
         for(auto dst = data.begin(); auto&& node: span)
-            loaders.at(node->tag())(*dst++, node.get());
+            loaders.at(node->name())(*dst++, node.get());
     }
 
     template <meta::info INFO, typename T>
@@ -590,7 +590,7 @@ private:
         requires IsRoot<INFO> || ((IsClass<T> || IsElem<INFO>) && !IsRange<T>)
     static void load(T& data, Element* node) {
         static constexpr string_view NAME_OF{nameOf(INFO)};
-        if(node->tag() != NAME_OF)
+        if(node->name() != NAME_OF)
             if(node = node->firstChild(NAME_OF); !node)
                 return;
         // static_assert(members<T>().size(), display_string_of(^^T));

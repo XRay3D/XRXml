@@ -135,7 +135,7 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
     }
 
     ~Element() = default;
-    Elements children(string_view tag);
+    Elements children(string_view name);
 
     string_view attrVal(string_view key) const {
         auto it = r::find(attributes, key, &Attribute::key);
@@ -147,20 +147,20 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
         return (it != attributes.end()) ? it.base() : nullptr;
     }
 
-    Element* firstChild(string_view tag) {
-        auto it = r::find(*this, tag, &Data::key);
+    Element* firstChild(string_view name) {
+        auto it = r::find(*this, name, &Data::key);
         return it != end() ? it->get() : nullptr;
     }
 
-    const Element* firstChild(string_view tag) const {
-        auto it = r::find(*this, tag, &Data::key);
+    const Element* firstChild(string_view name) const {
+        auto it = r::find(*this, name, &Data::key);
         return it != end() ? it->get() : nullptr;
     }
 
-    string_view tag() const noexcept { return key; }
+    string_view name() const noexcept { return key; }
     string_view text() const noexcept { return value(); }
 
-    void setTag(string_view newTag) noexcept;
+    void setName(string_view newTag) noexcept;
     void setText(string_view newText) noexcept { value_ = newText; }
 };
 
@@ -177,7 +177,7 @@ struct Document {
 // =============== Implementation ===============
 
 // =============== Node ===============
-inline void Element::setTag(string_view newTag) noexcept {
+inline void Element::setName(string_view newTag) noexcept {
     if(key.size()) return;
     if(newTag.starts_with('<'))
         newTag = newTag.substr(1);
@@ -191,9 +191,9 @@ inline Element::Element(Element* parent)
     if(parent) parent->emplace_back(this);
 }
 
-inline Elements Element::children(string_view tag) {
+inline Elements Element::children(string_view name) {
     Elements list;
-    auto filter = [tag](auto&& child) { return child->tag() == tag; };
+    auto filter = [name](auto&& child) { return child->name() == name; };
     list.assign_range(*this | v::filter(filter) | v::transform(&std::unique_ptr<Element>::get));
     return list;
 }
@@ -241,7 +241,7 @@ inline constexpr bool Document::parse(string_view buf) {
             i = buf.find_first_of(attr.key.empty() ? " '\"=>"sv : "'\""sv);
             switch(buf[i]) {
             case ' ': {
-                node.setTag(buf.substr(1, i));
+                node.setName(buf.substr(1, i));
                 buf = buf.substr(++i);
                 continue;
             } break;
@@ -266,10 +266,10 @@ inline constexpr bool Document::parse(string_view buf) {
             } break;
             case '>': {
                 if(buf.data()[i - 1] == '/') {
-                    node.setTag(buf.substr(0, i));
+                    node.setName(buf.substr(0, i));
                     tt = TagType::INLINE;
                 } else {
-                    node.setTag(buf.substr(1, i - 1));
+                    node.setName(buf.substr(1, i - 1));
                     tt = TagType::START;
                 }
                 buf = buf.substr(i);
@@ -306,8 +306,8 @@ inline constexpr bool Document::parse(string_view buf) {
             }
             if(size_t i = lex.find(' '); i < lex.size())
                 lex = lex.substr(0, i);
-            if(currNode->tag() != lex) {
-                println(stderr, "Mismatched tags ({} != {})", currNode->tag(), lex);
+            if(currNode->name() != lex) {
+                println(stderr, "Mismatched tags ({} != {})", currNode->name(), lex);
                 return false;
             }
             currNode = currNode->parent;
@@ -336,13 +336,13 @@ inline constexpr bool Document::parse(string_view buf) {
         }
         default: // New node
             currNode = new Element{currNode};
-            // Start tag
+            // Start name
             if(parseAttrs(buf, *currNode) == TagType::INLINE) {
                 currNode = currNode->parent;
                 continue;
             }
-            // Is tag name if none
-            assert(currNode->tag().size());
+            // Is name name if none
+            assert(currNode->name().size());
             // Reset lexer
             lex = {};
             continue;
@@ -375,7 +375,7 @@ inline bool Document::write(string_view path, int indent) {
                 continue;
             }
 
-            print(file, "<{}", child->tag());
+            print(file, "<{}", child->name());
             r::sort(child->attributes, {}, &Data::key); // NOTE remove noise in diff
             for(Attribute attr: child->attributes) {
                 // if(attr.value().empty()) continue;
@@ -388,13 +388,13 @@ inline bool Document::write(string_view path, int indent) {
             else {
                 print(file, ">");
                 if(child->size() == 0)
-                    println(file, "{}</{}>", child->text(), child->tag());
+                    println(file, "{}</{}>", child->text(), child->name());
                 else {
                     println(file, "");
                     nodeOut(child.get(), times);
                     // if(times > 0) print(file, "{:{}}", " "sv, indent * times);
                     print(file, "{:s}", indentTag);
-                    println(file, "</{}>", child->tag());
+                    println(file, "</{}>", child->name());
                 }
             }
         }
