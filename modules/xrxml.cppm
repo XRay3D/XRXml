@@ -30,5 +30,5 @@ export module lxml;
 #   pragma clang diagnostic ignored "-Winclude-angled-in-module-purview"
 #endif
 
-#include <lxml.hpp>
+#include <xrxml.hpp>
 
