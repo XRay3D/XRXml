@@ -169,6 +169,7 @@ struct Document {
     Element root;
     string_view version;
     string_view encoding;
+    bool saveComments{};
     bool load(string_view path);
     constexpr bool parse(string_view path);
     bool write(string_view path, int indent);
@@ -322,7 +323,7 @@ inline constexpr bool Document::parse(string_view buf) {
                         return false;
                     } else lex = buf.substr(0, ++i);
                 }
-                // (new Element{currNode})->setText(lex);
+                if(saveComments) (new Element{currNode})->setText(lex);
                 buf = buf.substr(i);
                 continue;
             }
