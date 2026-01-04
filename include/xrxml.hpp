@@ -157,6 +157,11 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
         return it != end() ? it->get() : nullptr;
     }
 
+    const Element* firstChildOf(std::span<const string_view> names) const {
+        auto it = r::find_first_of(*this, names, std::equal_to{}, &Data::key);
+        return it != end() ? it->get() : nullptr;
+    }
+
     string_view name() const noexcept { return key; }
     string_view text() const noexcept { return value(); }
 
