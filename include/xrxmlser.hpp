@@ -33,10 +33,11 @@ enum class DontSkip_ : bool {
 struct Type {
     enum eType {
         Null,
-        Element,
-        Attr,
-        Root,
         Array,
+        Attr,
+        Element,
+        Name,
+        Root,
     } type{};
     bool canSkip = true;
     const char* name = nullptr;
@@ -70,6 +71,7 @@ struct Type {
     Attr{Type::Attr},            //
     ElemF{Type::Element, false}, // DontSkip
     Elem{Type::Element},         //
+    Name{Type::Name},            //
     Root{Type::Root, false};     // DontSkip
 
 namespace meta = std ::meta;
