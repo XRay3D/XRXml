@@ -184,6 +184,8 @@ inline constexpr auto toEnum(string_view name) -> Enum {
     template for(constexpr meta::info ENUM:
         std::define_static_array(enumerators_of(^^Enum))) {
         if(std::meta::display_string_of(ENUM) == name) return [:ENUM:];
+        if constexpr(constexpr auto annotation = annotation_of_type<Type>(ENUM))
+            if(*annotation == name) return [:ENUM:];
     }
     return Enum{};
 }
@@ -286,7 +288,7 @@ private:
 
         node.get_optional(NAME_OF);
 
-        // Data* val = IsAttr<INFO> ? node->attr(NAME_OF)
+        // const Data* val = IsAttr<INFO> ? node->attr(NAME_OF)
         //                          : node->firstChild(NAME_OF);
         // if(!val) {
         //     // logRed("data {} {}", NAME_OF, display_string_of(^^T));
@@ -479,17 +481,22 @@ private:
     template <meta::info INFO, typename T>
     static void load(T& data, Element* node) {
         static constexpr string_view NAME_OF{nameOf(INFO)};
-        Data* val = IsAttr<INFO> ? node->attr(NAME_OF)
-                                 : node->firstChild(NAME_OF);
+        const Data* val = IsAttr<INFO> ? node->attr(NAME_OF)
+                                       : node->firstChild(NAME_OF);
         if(!val) return;
 
         if constexpr(IsSame<T, std::string>) {
             data = val->value();
         } else if constexpr(IsEnum<T>) {
             data = toEnum<T>(val->value());
+        } else if constexpr(IsSame<T, bool>) {
+            data = val->value() == "true"sv || val->value() == "1"sv;
         } else if constexpr(IsArithmetic<T>) {
             string_view sv = val->value();
-            std::from_chars(sv.data(), sv.data() + sv.size(), data);
+            if(sv.starts_with("0x"))
+                std::from_chars(sv.data() + 2, sv.data() + sv.size(), data, 16);
+            else
+                std::from_chars(sv.data(), sv.data() + sv.size(), data);
         } else {
             logRed("data {} {}", NAME_OF, display_string_of(^^T));
         }
@@ -552,12 +559,13 @@ private:
 
     template <meta::info INFO, typename T>
     static void load(std::optional<T>& data, Element* node) {
-        static constexpr string_view NAME_OF{nameOf(^^T)};
+        static constexpr string_view NAME_OF{nameOf(INFO)};
+        // if(NAME_OF == "size") asm("int3");
 
-        Data* val = IsAttr<INFO> ? node->attr(NAME_OF)
-                                 : node->firstChild(NAME_OF);
+        const Data* val = IsAttr<INFO> ? node->attr(NAME_OF)
+                                       : node->firstChild(NAME_OF);
         if(!val) return;
-        load<INFO>(*(data = T{}), node);
+        load<INFO>(data.emplace(T{}), node);
     }
 
     template <meta::info INFO, typename T>
