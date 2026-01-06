@@ -24,10 +24,7 @@ using std ::string_view;
 
 // =============== Serializer ===============
 
-struct Ignore_ {
-} inline constexpr Ignore;
-
-enum class DontSkip_ : bool {
+enum class _DontSkip : bool {
 } inline constexpr DontSkip{true};
 
 struct Type {
@@ -36,6 +33,7 @@ struct Type {
         Array,
         Attr,
         Element,
+        Ignore,
         Name,
         Root,
     } type{};
@@ -48,22 +46,31 @@ struct Type {
             .name = std::define_static_string(name),
         };
     }
-    consteval auto operator()(string_view name, DontSkip_ ds) const -> Type {
+    consteval auto operator()(string_view name, _DontSkip ds) const -> Type {
         return {
             .type = type,
             .canSkip = !std::to_underlying(ds),
             .name = std::define_static_string(name),
         };
     }
-    consteval auto operator()(DontSkip_ ds) const -> Type {
+    consteval auto operator()(_DontSkip ds) const -> Type {
         return {
             .type = type,
             .canSkip = !std::to_underlying(ds),
             .name = name,
         };
     }
+
+    constexpr bool isNull() const noexcept { return type == Null; }
+    constexpr bool isArray() const noexcept { return type == Array; }
+    constexpr bool isAttr() const noexcept { return type == Attr; }
+    constexpr bool isElement() const noexcept { return type == Element; }
+    constexpr bool isIgnore() const noexcept { return type == Ignore; }
+    constexpr bool isName() const noexcept { return type == Name && name != ""sv; }
+    constexpr bool isRoot() const noexcept { return type == Root; }
+
     constexpr auto operator<=>(const Type&) const noexcept = default;
-    constexpr operator string_view() const noexcept { return name ? name : string_view{}; };
+    constexpr operator string_view() const noexcept { return name ? name : ""sv; };
 } inline constexpr               //
     ArrayF{Type::Array, false},  // DontSkip
     Array{Type::Array},          //
@@ -71,6 +78,7 @@ struct Type {
     Attr{Type::Attr},            //
     ElemF{Type::Element, false}, // DontSkip
     Elem{Type::Element},         //
+    Ignore{Type::Ignore},        //
     Name{Type::Name},            //
     Root{Type::Root, false};     // DontSkip
 
@@ -113,25 +121,22 @@ consteval std::optional<T> annotation_of_type(meta::info r) {
 
 template <meta::info INFO> concept HasXmlAnnotation
     = meta::annotations_of(INFO, ^^Type).size() == 1;
-
-template <meta::info INFO> concept CanSkip = HasXmlAnnotation<INFO>
-    && annotation_of_type<Type>(INFO)->canSkip;
-
-template <meta::info INFO> concept IsRoot = HasXmlAnnotation<INFO>
-    && annotation_of_type<Type>(INFO)->type == Type::Root;
-
-template <meta::info INFO> concept IsElem = HasXmlAnnotation<INFO>
-    && annotation_of_type<Type>(INFO)->type == Type::Element;
-
-template <meta::info INFO> concept IsAttr = HasXmlAnnotation<INFO>
-    && annotation_of_type<Type>(INFO)->type == Type::Attr;
-
-template <meta::info INFO> concept IsArr = HasXmlAnnotation<INFO>
-    && annotation_of_type<Type>(INFO)->type == Type::Array;
+template <meta::info INFO> concept CanSkip
+    = HasXmlAnnotation<INFO> && annotation_of_type<Type>(INFO)->canSkip;
+template <meta::info INFO> concept IsRoot
+    = HasXmlAnnotation<INFO> && annotation_of_type<Type>(INFO)->isRoot();
+template <meta::info INFO> concept IsElem
+    = HasXmlAnnotation<INFO> && annotation_of_type<Type>(INFO)->isElement();
+template <meta::info INFO> concept IsAttr
+    = HasXmlAnnotation<INFO> && annotation_of_type<Type>(INFO)->isAttr();
+template <meta::info INFO> concept IsArr
+    = HasXmlAnnotation<INFO> && annotation_of_type<Type>(INFO)->isArray();
 
 template <typename A> concept IsArithmetic = std ::is_arithmetic_v<A>;
-template <typename C> concept IsClass = std ::is_class_v<C>;
 template <typename E> concept IsEnum = std ::is_enum_v<E>;
+template <typename F> concept IsFloating = std ::is_floating_point_v<F>;
+template <typename I> concept IsIntegral = std ::is_integral_v<I>;
+template <typename C> concept IsClass = std ::is_class_v<C>;
 template <typename R> concept IsRange = requires(R r) { r::begin(r); r::end(r); };
 template <typename T1, typename T2> concept IsSame = std ::is_same_v<T1, T2>;
 template <typename T> concept IsOptional = IsSame<T, std::optional<typename T::value_type>>;
@@ -181,12 +186,32 @@ inline constexpr auto logYellow = Log<Yellow>{};
 
 template <IsEnum Enum>
 inline constexpr auto toEnum(string_view name) -> Enum {
+#if 0
+    static constexpr auto NAMES = [] {// TODO pair Name/Val
+        constexpr auto _1 = define_static_array(
+            enumerators_of(^^Enum)
+            | v::transform(meta::display_string_of)
+            | v::transform(&std::string_view::data));
+
+        constexpr auto _2 = define_static_array(
+            enumerators_of(^^Enum)
+            | v::transform(meta::annotation_of_type<Type>)
+            | v::filter([](const std::optional<Type>& opt) { return opt.has_value(); })
+            | v::transform([](const std::optional<Type>& opt) { return opt->name; }));
+
+        std::array<string_view, _1.size() + _2.size()> ret;
+        r::copy(_2, r::copy(_1, ret.begin()).out);
+        return ret;
+    }();
+    if(r::find(NAMES, name));
+#else
     template for(constexpr meta::info ENUM:
         std::define_static_array(enumerators_of(^^Enum))) {
-        if(std::meta::display_string_of(ENUM) == name) return [:ENUM:];
+        if(display_string_of(ENUM) == name) return [:ENUM:];
         if constexpr(constexpr auto annotation = annotation_of_type<Type>(ENUM))
             if(*annotation == name) return [:ENUM:];
     }
+#endif
     return Enum{};
 }
 
@@ -195,7 +220,12 @@ inline constexpr auto toString(Enum e) -> string_view {
     // clang-format off
     switch(e) {
     template for(constexpr meta::info ENUM: std::define_static_array(enumerators_of(^^Enum)))
-    case [:ENUM:]: return display_string_of(ENUM);
+    case [:ENUM:]:
+        if constexpr(constexpr auto annotation = annotation_of_type<Type>(ENUM);
+            annotation && annotation->isName())
+            return *annotation;
+        else
+            return display_string_of(ENUM);
     default: return ""sv;
     }
     // clang-format on
@@ -491,12 +521,14 @@ private:
             data = toEnum<T>(val->value());
         } else if constexpr(IsSame<T, bool>) {
             data = val->value() == "true"sv || val->value() == "1"sv;
-        } else if constexpr(IsArithmetic<T>) {
+        } else if constexpr(IsFloating<T>) {
             string_view sv = val->value();
-            if(sv.starts_with("0x"))
-                std::from_chars(sv.data() + 2, sv.data() + sv.size(), data, 16);
-            else
-                std::from_chars(sv.data(), sv.data() + sv.size(), data);
+            std::from_chars(sv.data(), sv.data() + sv.size(), data);
+        } else if constexpr(IsIntegral<T>) {
+            string_view sv = val->value();
+            int format = 10;
+            if(sv.starts_with("0x")) sv = sv.substr(2), format = 16;
+            std::from_chars(sv.data(), sv.data() + sv.size(), data, format);
         } else {
             logRed("data {} {}", NAME_OF, display_string_of(^^T));
         }
