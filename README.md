@@ -7,7 +7,6 @@
 Пример использования:
 ```cpp
 // XML::Array  - The field name tag contains a tag with the type name from the array.
-// XML::ArrayF - The `F` suffix means "Ignore if empty or null" in serialization for all annotations instead of an array of elements in the array.
 // XML::Elem   - Insert an array of elements without a root tag .
 // XML::Attr   - XML attribute.
 // XML::Ignore - Ignore serialization.

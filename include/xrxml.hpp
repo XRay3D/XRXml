@@ -163,20 +163,20 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
         return (it != attributes.end()) ? it.base() : nullptr;
     }
 
-    // auto firstChild(this auto&& self, string_view name) {
-    //     auto it = r::find(self, name, &Data::key);
-    //     return std::forward_like<decltype(self)>(it != self.end() ? it->get() : nullptr);
-    // }
+    auto firstChild(this auto&& self, string_view name) {
+        auto it = r::find(self, name, &Data::key);
+        return std::forward_like<decltype(self)>(it != self.end() ? it->get() : nullptr);
+    }
 
     // Element* firstChild(string_view name) {
     //     auto it = r::find(*this, name, &Data::key);
     //     return it != end() ? it->get() : nullptr;
     // }
 
-    const Element* firstChild(string_view name) const {
-        auto it = r::find(*this, name, &Data::key);
-        return it != end() ? it->get() : nullptr;
-    }
+    // const Element* firstChild(string_view name) const {
+    // auto it = r::find(*this, name, &Data::key);
+    // return it != end() ? it->get() : nullptr;
+    // }
 
     // auto firstChildOf(this auto&& self, std::span<const string_view> names) {
     //     auto it = r::find_first_of(self, names, std::equal_to{}, &Data::key);
