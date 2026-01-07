@@ -122,15 +122,31 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
     struct Element* parent{};
     AttributeList attributes{};
 
-    explicit Element(Element* parent = nullptr);
+    enum class Type {
+        Null,
+        Tag,
+        Root,
+        Comment,
+        Data,
+    } type{};
 
-    explicit Element(Element* parent, string_view key, string_view val = {})
-        : Data{key, val}, parent{parent} {
+    explicit Element(Element* parent = nullptr, Type type = {})
+        : parent{parent}, type{type} {
         if(parent) parent->emplace_back(this);
     }
 
-    explicit Element(Element* parent, string_view key, std::string val)
-        : Data{key, val}, parent{parent} {
+    explicit Element(Element* parent, string_view key, string_view val = {}, Type type = Type::Tag)
+        : Data{key, val}, parent{parent}, type{type} {
+        if(parent) parent->emplace_back(this);
+    }
+
+    explicit Element(Element* parent, string_view key, const std::string& val, Type type = Type::Tag)
+        : Data{key, val}, parent{parent}, type{type} {
+        if(parent) parent->emplace_back(this);
+    }
+
+    explicit Element(Element* parent, string_view key, std::string&& val, Type type = Type::Tag)
+        : Data{key, std::move(val)}, parent{parent}, type{type} {
         if(parent) parent->emplace_back(this);
     }
 
@@ -147,15 +163,25 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
         return (it != attributes.end()) ? it.base() : nullptr;
     }
 
-    Element* firstChild(string_view name) {
-        auto it = r::find(*this, name, &Data::key);
-        return it != end() ? it->get() : nullptr;
-    }
+    // auto firstChild(this auto&& self, string_view name) {
+    //     auto it = r::find(self, name, &Data::key);
+    //     return std::forward_like<decltype(self)>(it != self.end() ? it->get() : nullptr);
+    // }
+
+    // Element* firstChild(string_view name) {
+    //     auto it = r::find(*this, name, &Data::key);
+    //     return it != end() ? it->get() : nullptr;
+    // }
 
     const Element* firstChild(string_view name) const {
         auto it = r::find(*this, name, &Data::key);
         return it != end() ? it->get() : nullptr;
     }
+
+    // auto firstChildOf(this auto&& self, std::span<const string_view> names) {
+    //     auto it = r::find_first_of(self, names, std::equal_to{}, &Data::key);
+    //     return std::forward_like<decltype(self)>(it != self.end() ? it->get() : nullptr);
+    // }
 
     const Element* firstChildOf(std::span<const string_view> names) const {
         auto it = r::find_first_of(*this, names, std::equal_to{}, &Data::key);
@@ -168,6 +194,7 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
         if(parent->begin() > it || it >= parent->end()) return nullptr;
         return it->get();
     }
+
     string_view name() const noexcept { return key; }
     string_view text() const noexcept { return value(); }
 
@@ -177,7 +204,7 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
 
 struct Document {
     std::string buf;
-    Element root;
+    Element root{nullptr, Element::Type::Root};
     string_view version;
     string_view encoding;
     bool saveComments{};
@@ -196,11 +223,6 @@ inline void Element::setName(string_view newTag) noexcept {
     if(size_t i = newTag.find_first_of("\r\n\t /"sv); i < newTag.size())
         newTag = newTag.substr(0, i);
     key = newTag;
-}
-
-inline Element::Element(Element* parent)
-    : parent{parent} {
-    if(parent) parent->emplace_back(this);
 }
 
 inline Elements Element::children(string_view name) {
@@ -334,11 +356,26 @@ inline constexpr bool Document::parse(string_view buf) {
                         return false;
                     } else lex = buf.substr(0, ++i);
                 }
-                if(saveComments) (new Element{currNode})->setText(lex);
+                if(saveComments) new Element{currNode, {}, lex, Element::Type::Comment};
                 buf = buf.substr(i);
                 continue;
             }
-            std::unreachable();
+            if(buf.starts_with("<![CDATA["sv)) {
+                while(!lex.ends_with("]]>"sv)) {
+                    if(i = buf.find_first_of('>', i); i > buf.size()) {
+                        println(stderr, "Mismatched end of comment at {}", buf.data() - this->buf.data());
+                        return false;
+                    } else lex = buf.substr(0, ++i);
+                }
+                lex.remove_prefix(9);
+                lex.remove_suffix(3);
+                currNode->setText(lex);
+                // new Element{currNode, {}, lex, Element::Type::Data};
+                buf = buf.substr(i);
+                continue;
+            }
+            println(stderr, "Uncnown special data: {}", lex);
+            return false;
         case '?': { // Declaration tags
             Element desc;
             parseAttrs(buf, desc);
