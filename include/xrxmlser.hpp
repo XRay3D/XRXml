@@ -252,7 +252,7 @@ struct Overload final : Functors... {
 
 struct Serializer {
     Serializer(string_view path)
-        : path{path}, node{&document.root} { }
+        : path{path}, node{document.root()} { }
 
     template <typename T>
     void operator>>(T& data) try {
@@ -265,7 +265,7 @@ struct Serializer {
     template <typename T>
     void operator<<(const T& data) try {
         save<^^T>(data, node);
-        document.write(path, 4);
+        document.save(path, 4);
     } catch(std::exception& ex) {
         println(stderr, "{} {}", __FUNCTION__, ex.what());
     }
@@ -364,18 +364,18 @@ private:
         Overload{
             [](const std::string& data, Element* node) requires IsAttr<INFO> {
                 if(CanSkip<INFO> && data.empty()) return;
-                node->attributes.emplace_back(NAME_OF, data);
+                node->addAttribute(NAME_OF, data);
             },
             []<IsArithmetic A>(const A& data, Element* node) requires IsAttr<INFO> {
                 if(CanSkip<INFO> && data == A{}) return;
                 std::array<char, 32> buf{};
-                node->attributes.emplace_back(NAME_OF,
+                node->addAttribute(NAME_OF,
                     std::string{buf.begin(),
                         std::to_chars(buf.begin(), buf.end(), data).ptr});
             },
             []<IsEnum E>(const E& data, Element* node) requires IsAttr<INFO> {
                 if(CanSkip<INFO> && data == E{}) return;
-                node->attributes.emplace_back(NAME_OF, toString(data));
+                node->addAttribute(NAME_OF, toString(data));
             },
 
             [](const std::string& data, Element* node) {
@@ -419,18 +419,18 @@ private:
             Overload save{
                 [](const std::string& data, Element* node) {
                     if(CanSkip<INFO> && data.empty()) return;
-                    node->attributes.emplace_back(NAME_OF, data);
+                    node->addAttribute(NAME_OF, data);
                 },
                 []<IsArithmetic A>(const A& data, Element* node) {
                     if(CanSkip<INFO> && data == A{}) return;
                     std::array<char, 32> buf{};
-                    node->attributes.emplace_back(NAME_OF,
+                    node->addAttribute(NAME_OF,
                         std::string{buf.begin(),
                             std::to_chars(buf.begin(), buf.end(), data).ptr});
                 },
                 []<IsEnum E>(const E& data, Element* node) {
                     if(CanSkip<INFO> && data == T{}) return;
-                    node->attributes.emplace_back(NAME_OF, toString(data));
+                    node->addAttribute(NAME_OF, toString(data));
                 },
                 []<class Any>(const Any& data, Element* node) {
                     logRed("data {} {}", NAME_OF, display_string_of(^^Any));
@@ -439,63 +439,61 @@ private:
             // constexpr auto save = [](const T& data, Element* node) {
             //     if constexpr(IsSame<T, std::string>) {
             //         if(CanSkip<INFO> && data == T{}) return;
-            //         node->attributes.emplace_back(NAME_OF, data);
+            //         node->addAttribute(NAME_OF, data);
             //     } else if constexpr(IsArithmetic<T>) {
             //         if(CanSkip<INFO> && data == T{}) return;
             //         std::array<char, 32> buf{};
-            //         node->attributes.emplace_back(NAME_OF,
+            //         node->addAttribute(NAME_OF,
             //             std::string{buf.begin(),
             //                 std::to_chars(buf.begin(), buf.end(), data).ptr});
             //     } else if constexpr(IsEnum<T>) {
             //         if(CanSkip<INFO> && data == T{}) return;
-            //         node->attributes.emplace_back(NAME_OF, toString(data));
+            //         node->addAttribute(NAME_OF, toString(data));
             //     } else
             //         logRed("data {} {}", NAME_OF, display_string_of(^^T));
             // };
             // if constexpr(IsSame<T, std::string>) {
             //     if(CanSkip<INFO> && data == T{}) return;
-            //     node->attributes.emplace_back(NAME_OF, data);
+            //     node->addAttribute(NAME_OF, data);
             // } else if constexpr(IsArithmetic<T>) {
             //     if(CanSkip<INFO> && data == T{}) return;
             //     std::array<char, 32> buf{};
-            //     node->attributes.emplace_back(NAME_OF,
+            //     node->addAttribute(NAME_OF,
             //         std::string{buf.begin(),
             //             std::to_chars(buf.begin(), buf.end(), data).ptr});
             // } else if constexpr(IsEnum<T>) {
             //     if(CanSkip<INFO> && data == T{}) return;
-            //     node->attributes.emplace_back(NAME_OF, toString(data));
+            //     node->addAttribute(NAME_OF, toString(data));
             // }
             if constexpr(IsOptional<T>) {
                 if(data) save(*data, node);
             } else
                 save(data, node);
         } else if constexpr(IsSame<T, std::string>) {
-            new Element{node, NAME_OF, data};
+            node->addElement(NAME_OF, data);
         } else if constexpr(IsArithmetic<T>) {
             std::array<char, 32> buf{};
-            new Element{
-                node, NAME_OF,
-                std::string{buf.begin(), std::to_chars(buf.begin(), buf.end(), data).ptr}
-            };
+            node->addElement(NAME_OF,
+                std::string{buf.begin(), std::to_chars(buf.begin(), buf.end(), data).ptr});
         } else if constexpr(IsEnum<T>) {
-            new Element{node, NAME_OF, toString(data)};
+            node->addElement(NAME_OF, toString(data));
         } else if constexpr(IsArr<INFO>) {
             // if(NAME_OF == "Voids") logYellow("data {} {}", NAME_OF, display_string_of(^^T));
             if(CanSkip<INFO> && data.empty()) return;
-            node = new Element{node, NAME_OF};
+            node = node->addElement(NAME_OF);
             for(auto&& var: data) save(var, node);
         } else if constexpr(IsRange<T>) {
             for(auto&& var: data) save(var, node);
         } else if constexpr(IsClass<T>) {
-            node = new Element{node, NAME_OF};
+            node = node->addElement(NAME_OF);
             // static_assert(members<T>().size(), display_string_of(^^T));
             template for(constexpr meta::info MEMBER: members(^^T))
                 save<MEMBER>(data.[:MEMBER:], node);
             if(CanSkip<INFO>
                 && node->text().empty()
-                && node->attributes.empty()
+                && node->attributes().empty()
                 && node->empty()) // remove if is all data is empty
-                node->parent->pop_back();
+                node->parent()->pop_back();
         } else
             logRed("data {} {}", NAME_OF, display_string_of(^^T));
 #endif
@@ -577,7 +575,7 @@ private:
             if(node = node->firstChild(NAME_OF); !node) return;
             span = *node;
         } else {
-            auto begin = r::find_first_of(*node, NAMES, {}, &Data::key);
+            auto begin = r::find_first_of(*node, NAMES, {}, &Data::name);
             if(begin == node->end()) return;
             span = {begin, node->end()};
         }
@@ -604,9 +602,9 @@ private:
         requires IsElem<INFO>
     static void load(std::vector<T>& data, Element* node) {
         static constexpr string_view NAME_OF{nameOf(^^T)};
-        auto begin = r::find(*node, NAME_OF, &Data::key);
+        auto begin = r::find(*node, NAME_OF, &Data::name);
         if(begin == node->end()) return;
-        auto end = r::find_last(*node, NAME_OF, &Data::key);
+        auto end = r::find_last(*node, NAME_OF, &Data::name);
         assert(end.begin() != node->end());
         if constexpr(requires { data.resize(0u); }) {
             std::span span{begin, ++end.begin()};

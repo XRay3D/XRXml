@@ -121,7 +121,8 @@ using Attribute = Data;
 using AttributeList = std::vector<Data>;
 using Elements = std::vector<struct Element*>;
 
-class Element : Data, public std::vector<std::unique_ptr<Element>> {
+class Element : public Data, public std::vector<std::unique_ptr<Element>> {
+    using vector = std::vector<std::unique_ptr<Element>>;
     friend struct Document;
     struct Element* parent_{};
     AttributeList attributes_{};
@@ -149,7 +150,9 @@ class Element : Data, public std::vector<std::unique_ptr<Element>> {
 
 public:
     ~Element() = default;
-    const Element* parent() const noexcept { return parent_; }
+
+    auto* parent(this auto&& self) { return self.parent_; }
+
     auto children() const noexcept { return v::transform(*this, &std::unique_ptr<Element>::get); }
 
     Elements children(string_view name) {
