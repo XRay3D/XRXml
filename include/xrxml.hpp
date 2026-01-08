@@ -121,45 +121,36 @@ using Attribute = Data;
 using AttributeList = std::vector<Data>;
 using Elements = std::vector<struct Element*>;
 
-struct Element : Data, std::vector<std::unique_ptr<Element>> {
-    struct Element* parent{};
-    AttributeList attributes{};
+class Element : Data, public std::vector<std::unique_ptr<Element>> {
+    friend struct Document;
+    struct Element* parent_{};
+    AttributeList attributes_{};
 
     enum class Type {
         Null,
-        Tag,
-        Root,
         Comment,
         Data,
+        Root,
+        Tag,
+        Text,
     } type{};
 
     explicit Element(Element* parent = nullptr, Type type = {})
-        : parent{parent}, type{type} {
+        : parent_{parent}, type{type} {
         if(type != Type::Root && type != Type::Null) assert(parent); // FIXME
         if(parent) parent->emplace_back(this);
     }
 
-    explicit Element(Element* parent, string_view name, string_view val = {}, Type type = Type::Tag)
-        : Data{name, val}, parent{parent}, type{type} {
+    explicit Element(Element* parent, string_view name, std::variant<string_view, string> value = ""sv, Type type = Type::Tag)
+        : Data{name, std::move(value)}, parent_{parent}, type{type} {
         if(type != Type::Root) assert(parent);
         if(parent) parent->emplace_back(this);
     }
 
-    explicit Element(Element* parent, string_view name, const string& val, Type type = Type::Tag)
-        : Data{name, val}, parent{parent}, type{type} {
-        if(type != Type::Root) assert(parent);
-        if(parent) parent->emplace_back(this);
-    }
-
-    explicit Element(Element* parent, string_view name, string&& val, Type type = Type::Tag)
-        : Data{name, std::move(val)}, parent{parent}, type{type} {
-        if(type != Type::Root) assert(parent);
-        if(parent) parent->emplace_back(this);
-    }
-
+public:
     ~Element() = default;
-
-    auto children() const { return *this | v::transform(&std::unique_ptr<Element>::get); }
+    const Element* parent() const noexcept { return parent_; }
+    auto children() const noexcept { return v::transform(*this, &std::unique_ptr<Element>::get); }
 
     Elements children(string_view name) {
         Elements list;
@@ -169,48 +160,37 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
     }
 
     string_view attrVal(string_view name) const {
-        auto it = r::find(attributes, name, &Attribute::name_);
-        return (it != attributes.end()) ? it->value() : ""sv;
+        auto it = r::find(attributes_, name, &Attribute::name_);
+        return (it != attributes_.end()) ? it->value() : ""sv;
     }
 
     const Attribute* attr(string_view name) const {
-        auto it = r::find(attributes, name, &Attribute::name_);
-        return (it != attributes.end()) ? it.base() : nullptr;
+        auto it = r::find(attributes_, name, &Attribute::name_);
+        return (it != attributes_.end()) ? it.base() : nullptr;
+    }
+
+    auto& attributes(this auto&& self) {
+        return std::forward_like<decltype(self)>(self.attributes_);
     }
 
     Data& addAttribute(string_view name, std::variant<string_view, string> value) {
-        return attributes.emplace_back(name, std::move(value));
+        return attributes_.emplace_back(name, std::move(value));
     }
 
     auto firstChild(this auto&& self, string_view name) {
-        auto it = r::find(self, name, &Data::name_);
+        auto it = r::find(self, name, &Element::name);
         return std::forward_like<decltype(self)>(it != self.end() ? it->get() : nullptr);
     }
 
-    // Element* firstChild(string_view name) {
-    //     auto it = r::find(*this, name, &Data::name);
-    //     return it != end() ? it->get() : nullptr;
-    // }
-
-    // const Element* firstChild(string_view name) const {
-    // auto it = r::find(*this, name, &Data::name);
-    // return it != end() ? it->get() : nullptr;
-    // }
-
-    // auto firstChildOf(this auto&& self, std::span<const string_view> names) {
-    //     auto it = r::find_first_of(self, names, std::equal_to{}, &Data::name);
-    //     return std::forward_like<decltype(self)>(it != self.end() ? it->get() : nullptr);
-    // }
-
     const Element* firstChildOf(std::span<const string_view> names) const {
-        auto it = r::find_first_of(*this, names, std::equal_to{}, &Data::name_);
+        auto it = r::find_first_of(*this, names, std::equal_to{}, &Element::name);
         return it != end() ? it->get() : nullptr;
     }
 
     const Element* sibling(ptrdiff_t index) const {
-        if(!parent) return nullptr;
-        auto it = r::find(*parent, this, &std::unique_ptr<Element>::get) + index;
-        if(parent->begin() > it || it >= parent->end()) return nullptr;
+        if(!parent_) return nullptr;
+        auto it = r::find(*parent_, this, &std::unique_ptr<Element>::get) + index;
+        if(parent_->begin() > it || it >= parent_->end()) return nullptr;
         return it->get();
     }
 
@@ -219,22 +199,34 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
 
     void setName(string_view newTag) noexcept;
     void setText(string_view newText) noexcept { value_ = newText; }
+
+    inline Element* addComment(string_view comment) {
+        return new XML::Element{this, {}, comment, XML::Element::Type::Comment};
+    }
+
+    inline Element* addText(string_view text) {
+        return new XML::Element{this, {}, text, XML::Element::Type::Text};
+    }
+
+    inline Element* addElement(string_view name, std::variant<string_view, string> value = ""sv) {
+        return new XML::Element{this, name, std::move(value)};
+    }
 };
 
-inline Element* newComment(Element* parent, string_view comment) {
-    return new XML::Element{parent, {}, comment, XML::Element::Type::Comment};
-}
-
-struct Document {
+class Document {
     string buf;
-    Element root{nullptr, Element::Type::Root};
+    Element root_{nullptr, Element::Type::Root};
     string_view version;
     string_view encoding;
-    bool saveComments{};
+    // bool saveComments{};
+
+public:
+    Element* root() { return &root_; }
+    void clear() { root_.clear(); }
     bool load(string_view path);
     constexpr bool parse(string_view path);
     bool save(string_view path, int indent = 4);
-    Element* rootElement() { return root.size() ? root.front().get() : nullptr; }
+    Element* rootElement() { return root_.size() ? root_.front().get() : nullptr; }
 };
 
 // =============== Implementation ===============
@@ -263,7 +255,7 @@ inline bool Document::load(string_view path) {
     int size = ftell(file.get());
     fseek(file.get(), 0, SEEK_SET);
 
-    root.clear();
+    root_.clear();
     buf.resize(size);
     fread(buf.data(), 1, size, file.get());
 
@@ -274,7 +266,7 @@ inline constexpr bool Document::parse(string_view buf) {
     string_view lex;
     size_t i;
 
-    Element* currNode = &root;
+    Element* currNode = &root_;
     // Remove bom
     if(buf.starts_with("\xEF\xBB\xBF"sv))
         buf = buf.substr(3);
@@ -305,7 +297,7 @@ inline constexpr bool Document::parse(string_view buf) {
                 i = buf.find_first_of("'\"");
                 attr.value_ = buf.substr(0, i);
                 buf = buf.substr(++i);
-                node.attributes.emplace_back(attr);
+                node.attributes_.emplace_back(attr);
                 attr.name_ = {};
                 attr.value_ = {};
                 i = 0;
@@ -362,7 +354,7 @@ inline constexpr bool Document::parse(string_view buf) {
                 println(stderr, "Mismatched tags ({} != {})", currNode->name(), lex);
                 return false;
             }
-            currNode = currNode->parent;
+            currNode = currNode->parent_;
             buf = buf.substr(i);
             continue;
         case '!': // Special nodes
@@ -374,7 +366,7 @@ inline constexpr bool Document::parse(string_view buf) {
                         return false;
                     } else lex = buf.substr(0, ++i);
                 }
-                if(saveComments) new Element{currNode, {}, lex, Element::Type::Comment};
+                /*if(saveComments)*/ currNode->addComment(lex);
                 buf = buf.substr(i);
                 continue;
             }
@@ -405,7 +397,7 @@ inline constexpr bool Document::parse(string_view buf) {
             currNode = new Element{currNode};
             // Start name
             if(parseAttrs(buf, *currNode) == TagType::INLINE) {
-                currNode = currNode->parent;
+                currNode = currNode->parent_;
                 continue;
             }
             // Is name name if none
@@ -442,11 +434,20 @@ inline bool Document::save(string_view path, int indent) {
                 continue;
             }
 
+            switch(child->type) {
+            case Element::Type ::Null: break;
+            case Element::Type ::Comment: println(file, "<!--{}-->", child->text()); continue;
+            case Element::Type ::Data: println(file, "<![CDATA[{}]]>", child->text()); continue;
+            case Element::Type ::Root: break;
+            case Element::Type ::Tag: break;
+            case Element::Type ::Text: println(file, "{}", child->text()); continue;
+            }
+
             print(file, "<{}", child->name());
-            r::sort(child->attributes, {}, &Data::name_); // NOTE remove noise in diff
-            for(Attribute attr: child->attributes) {
+            r::sort(child->attributes_, {}, &Data::name_); // NOTE remove noise in diff
+            for(Attribute attr: child->attributes_) {
                 // if(attr.value().empty()) continue;
-                if(child->attributes.size() > 8)
+                if(child->attributes_.size() > 8)
                     print(file, "\n{:s}", indentAttr);
                 print(file, R"( {}="{}")", attr.name_, attr.value());
             }
@@ -467,7 +468,7 @@ inline bool Document::save(string_view path, int indent) {
         }
     };
 
-    nodeOut(&root);
+    nodeOut(&root_);
     // fclose(file);
     return true;
 }
