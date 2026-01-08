@@ -22,7 +22,7 @@
 #endif
 
 LXML_BEGIN_MODULE_EXPORT
-// using namespace std::string_literals;
+// using namespace string_literals;
 using namespace std ::string_view_literals;
 namespace r = std ::ranges;
 namespace v = std ::views;
@@ -34,18 +34,20 @@ namespace XML {
 
 using std ::print;
 using std ::println;
+
+using std ::string;
 using std ::string_view;
 
 #if 0
 
 struct Document {
-    std::string buf;
+    string buf;
     boost::property_tree::ptree root;
     string_view version;
     string_view encoding;
     bool load(string_view path) {
         std::unique_ptr<FILE, decltype([](FILE* fp) { if(fp) fclose(fp); })>
-            file(fopen(std::string{path}.c_str(), "r"), {});
+            file(fopen(string{path}.c_str(), "r"), {});
 
         if(!file) {
             println(stderr, "Could not load file from '{}'", path);
@@ -63,7 +65,7 @@ struct Document {
     }
     constexpr bool parse(string_view xmlCode) { // XML-код для парсинга
         // Создаем поток
-        std::stringstream stream{xmlCode};
+        stringstream stream{xmlCode};
         try {
             // Читаем XML
             boost::property_tree::read_xml(stream, root);
@@ -78,7 +80,7 @@ struct Document {
     }
     bool write(string_view path, int indent) {
         // Создаем поток
-        std::stringstream stream;
+        stringstream stream;
         try {
             // Записываем в другой поток
             boost::property_tree::write_xml(stream, root);
@@ -91,7 +93,7 @@ struct Document {
         }
 
         std::unique_ptr<FILE, decltype([](FILE* fp) { if(fp) fclose(fp); })>
-            file(fopen(std::string{path}.c_str(), "w"), {});
+            file(fopen(string{path}.c_str(), "w"), {});
 
         if(!file) {
             println(stderr, "Could not open file '{}'", path);
@@ -106,8 +108,9 @@ struct Document {
 
 // =============== Definitions ===============
 struct Data {
-    string_view key;
-    std::variant<string_view, std::string> value_;
+    string_view name_;
+    std::variant<string_view, string> value_;
+    string_view name() const { return name_; }
     string_view value() const {
         return value_.visit([](auto&& arg) -> string_view { return arg; });
     }
@@ -132,59 +135,75 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
 
     explicit Element(Element* parent = nullptr, Type type = {})
         : parent{parent}, type{type} {
+        if(type != Type::Root && type != Type::Null) assert(parent); // FIXME
         if(parent) parent->emplace_back(this);
     }
 
-    explicit Element(Element* parent, string_view key, string_view val = {}, Type type = Type::Tag)
-        : Data{key, val}, parent{parent}, type{type} {
+    explicit Element(Element* parent, string_view name, string_view val = {}, Type type = Type::Tag)
+        : Data{name, val}, parent{parent}, type{type} {
+        if(type != Type::Root) assert(parent);
         if(parent) parent->emplace_back(this);
     }
 
-    explicit Element(Element* parent, string_view key, const std::string& val, Type type = Type::Tag)
-        : Data{key, val}, parent{parent}, type{type} {
+    explicit Element(Element* parent, string_view name, const string& val, Type type = Type::Tag)
+        : Data{name, val}, parent{parent}, type{type} {
+        if(type != Type::Root) assert(parent);
         if(parent) parent->emplace_back(this);
     }
 
-    explicit Element(Element* parent, string_view key, std::string&& val, Type type = Type::Tag)
-        : Data{key, std::move(val)}, parent{parent}, type{type} {
+    explicit Element(Element* parent, string_view name, string&& val, Type type = Type::Tag)
+        : Data{name, std::move(val)}, parent{parent}, type{type} {
+        if(type != Type::Root) assert(parent);
         if(parent) parent->emplace_back(this);
     }
 
     ~Element() = default;
-    Elements children(string_view name);
 
-    string_view attrVal(string_view key) const {
-        auto it = r::find(attributes, key, &Attribute::key);
+    auto children() const { return *this | v::transform(&std::unique_ptr<Element>::get); }
+
+    Elements children(string_view name) {
+        Elements list;
+        auto filter = [name](auto&& child) { return child->name() == name; };
+        list.assign_range(*this | v::filter(filter) | v::transform(&std::unique_ptr<Element>::get));
+        return list;
+    }
+
+    string_view attrVal(string_view name) const {
+        auto it = r::find(attributes, name, &Attribute::name_);
         return (it != attributes.end()) ? it->value() : ""sv;
     }
 
-    const Attribute* attr(string_view key) const {
-        auto it = r::find(attributes, key, &Attribute::key);
+    const Attribute* attr(string_view name) const {
+        auto it = r::find(attributes, name, &Attribute::name_);
         return (it != attributes.end()) ? it.base() : nullptr;
     }
 
+    Data& addAttribute(string_view name, std::variant<string_view, string> value) {
+        return attributes.emplace_back(name, std::move(value));
+    }
+
     auto firstChild(this auto&& self, string_view name) {
-        auto it = r::find(self, name, &Data::key);
+        auto it = r::find(self, name, &Data::name_);
         return std::forward_like<decltype(self)>(it != self.end() ? it->get() : nullptr);
     }
 
     // Element* firstChild(string_view name) {
-    //     auto it = r::find(*this, name, &Data::key);
+    //     auto it = r::find(*this, name, &Data::name);
     //     return it != end() ? it->get() : nullptr;
     // }
 
     // const Element* firstChild(string_view name) const {
-    // auto it = r::find(*this, name, &Data::key);
+    // auto it = r::find(*this, name, &Data::name);
     // return it != end() ? it->get() : nullptr;
     // }
 
     // auto firstChildOf(this auto&& self, std::span<const string_view> names) {
-    //     auto it = r::find_first_of(self, names, std::equal_to{}, &Data::key);
+    //     auto it = r::find_first_of(self, names, std::equal_to{}, &Data::name);
     //     return std::forward_like<decltype(self)>(it != self.end() ? it->get() : nullptr);
     // }
 
     const Element* firstChildOf(std::span<const string_view> names) const {
-        auto it = r::find_first_of(*this, names, std::equal_to{}, &Data::key);
+        auto it = r::find_first_of(*this, names, std::equal_to{}, &Data::name_);
         return it != end() ? it->get() : nullptr;
     }
 
@@ -195,47 +214,45 @@ struct Element : Data, std::vector<std::unique_ptr<Element>> {
         return it->get();
     }
 
-    string_view name() const noexcept { return key; }
+    string_view name() const noexcept { return name_; }
     string_view text() const noexcept { return value(); }
 
     void setName(string_view newTag) noexcept;
     void setText(string_view newText) noexcept { value_ = newText; }
 };
 
+inline Element* newComment(Element* parent, string_view comment) {
+    return new XML::Element{parent, {}, comment, XML::Element::Type::Comment};
+}
+
 struct Document {
-    std::string buf;
+    string buf;
     Element root{nullptr, Element::Type::Root};
     string_view version;
     string_view encoding;
     bool saveComments{};
     bool load(string_view path);
     constexpr bool parse(string_view path);
-    bool write(string_view path, int indent);
+    bool save(string_view path, int indent = 4);
+    Element* rootElement() { return root.size() ? root.front().get() : nullptr; }
 };
 
 // =============== Implementation ===============
 
 // =============== Node ===============
 inline void Element::setName(string_view newTag) noexcept {
-    if(key.size()) return;
+    assert(name_.empty());
     if(newTag.starts_with('<'))
         newTag = newTag.substr(1);
     if(size_t i = newTag.find_first_of("\r\n\t /"sv); i < newTag.size())
         newTag = newTag.substr(0, i);
-    key = newTag;
-}
-
-inline Elements Element::children(string_view name) {
-    Elements list;
-    auto filter = [name](auto&& child) { return child->name() == name; };
-    list.assign_range(*this | v::filter(filter) | v::transform(&std::unique_ptr<Element>::get));
-    return list;
+    name_ = newTag;
 }
 
 // =============== Document ===============
 inline bool Document::load(string_view path) {
     std::unique_ptr<FILE, decltype([](FILE* fp) { if(fp) fclose(fp); })>
-        file(fopen(std::string{path}.c_str(), "r"), {});
+        file(fopen(string{path}.c_str(), "r"), {});
 
     if(!file) {
         println(stderr, "Could not load file from '{}'", path);
@@ -272,38 +289,39 @@ inline constexpr bool Document::parse(string_view buf) {
         TagType tt;
         size_t i{};
         while(i < buf.size()) {
-            i = buf.find_first_of(attr.key.empty() ? " '\"=>"sv : "'\""sv);
+            i = buf.find_first_of(attr.name_.empty() ? " '\"=>"sv : "'\""sv);
             switch(buf[i]) {
             case ' ': {
-                node.setName(buf.substr(1, i));
+                if(node.name_.empty()) node.setName(buf.substr(1, i));
                 buf = buf.substr(++i);
                 continue;
             } break;
             case '\'':
             case '"': {
-                if(attr.key.empty()) {
-                    println(stderr, "Value has no key");
+                if(attr.name_.empty()) {
+                    println(stderr, "Value has no name_");
                     return TagType::START;
                 }
                 i = buf.find_first_of("'\"");
                 attr.value_ = buf.substr(0, i);
                 buf = buf.substr(++i);
                 node.attributes.emplace_back(attr);
-                attr.key = {};
+                attr.name_ = {};
                 attr.value_ = {};
+                i = 0;
                 continue;
             } break;
             case '=': {
-                attr.key = buf.substr(0, i++);
+                attr.name_ = buf.substr(0, i++);
                 buf = buf.substr(++i);
                 continue;
             } break;
             case '>': {
                 if(buf.data()[i - 1] == '/') {
-                    node.setName(buf.substr(0, i));
+                    if(node.name_.empty()) node.setName(buf.substr(0, i));
                     tt = TagType::INLINE;
                 } else {
-                    node.setName(buf.substr(1, i - 1));
+                    if(node.name_.empty()) node.setName(buf.substr(1, i - 1));
                     tt = TagType::START;
                 }
                 buf = buf.substr(i);
@@ -348,7 +366,7 @@ inline constexpr bool Document::parse(string_view buf) {
             buf = buf.substr(i);
             continue;
         case '!': // Special nodes
-                  // Comments
+            // Comments
             if(buf.starts_with("<!--"sv)) {
                 while(!lex.ends_with("-->"sv)) {
                     if(i = buf.find_first_of('>', i); i > buf.size()) {
@@ -400,9 +418,9 @@ inline constexpr bool Document::parse(string_view buf) {
     return true;
 }
 
-inline bool Document::write(string_view path, int indent) {
+inline bool Document::save(string_view path, int indent) {
     std::unique_ptr<FILE, decltype([](FILE* fp) { if(fp) fclose(fp); })>
-        file(fopen(std::string{path}.c_str(), "w"), {});
+        file(fopen(string{path}.c_str(), "w"), {});
 
     if(!file) {
         println(stderr, "Could not open file '{}'", path);
@@ -425,12 +443,12 @@ inline bool Document::write(string_view path, int indent) {
             }
 
             print(file, "<{}", child->name());
-            r::sort(child->attributes, {}, &Data::key); // NOTE remove noise in diff
+            r::sort(child->attributes, {}, &Data::name_); // NOTE remove noise in diff
             for(Attribute attr: child->attributes) {
                 // if(attr.value().empty()) continue;
                 if(child->attributes.size() > 8)
                     print(file, "\n{:s}", indentAttr);
-                print(file, R"( {}="{}")", attr.key, attr.value());
+                print(file, R"( {}="{}")", attr.name_, attr.value());
             }
             if(child->size() == 0 && child->text().empty())
                 println(file, "/>");
